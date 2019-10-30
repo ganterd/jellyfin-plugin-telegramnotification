@@ -26,9 +26,5 @@ namespace Jellyfin.Plugin.TelegramNotification.Configuration
         public String DeviceName { get; set; }
         public int Priority { get; set; }
         public string JellyfinUserId { get; set; }
-
-
     }
-
-
 }

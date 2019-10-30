@@ -8,6 +8,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Model.Serialization;
 
 namespace Jellyfin.Plugin.TelegramNotification
 {
@@ -15,11 +16,13 @@ namespace Jellyfin.Plugin.TelegramNotification
     {
         private readonly ILogger _logger;
         private readonly IHttpClient _httpClient;
+        private readonly IJsonSerializer _jsonSerializer;
 
-        public Notifier(ILogger logger, IHttpClient httpClient)
+        public Notifier(ILogger logger, IHttpClient httpClient, IJsonSerializer jsonSerializer)
         {
             _logger = logger;
             _httpClient = httpClient;
+            _jsonSerializer = jsonSerializer;
         }
 
         public bool IsEnabledForUser(User user)
@@ -42,27 +45,29 @@ namespace Jellyfin.Plugin.TelegramNotification
 
         public async Task SendNotification(UserNotification request, CancellationToken cancellationToken)
         {
-
             var options = GetOptions(request.User);
-            string message = Uri.EscapeDataString(request.Name);
 
-            if (string.IsNullOrEmpty(request.Description) == false && options.SendDescription == true)
+            var parameters = new Dictionary<string, string>
             {
-                message = Uri.EscapeDataString(request.Name + "\n\n" + request.Description); 
-            }
+                {"chat_id", options.ChatID},
+                {"text", $"*{request.Name}*\n{request.Description}"},
+                {"parse_mode", "Markdown" }
+            };
 
             _logger.LogDebug("TeleGram to Token : {0} - {1} - {2}", options.BotToken, options.ChatID, request.Name);
 
             var _httpRequest = new HttpRequestOptions
             {
-                Url = "https://api.telegram.org/bot" + options.BotToken + "/sendmessage?chat_id=" + options.ChatID + "&text=" + message,
-                CancellationToken = cancellationToken
+                Url = "https://api.telegram.org/bot" + options.BotToken + "/sendMessage",
+                RequestContentType = "application/json",
+                BufferContent = false,
+                RequestContent = _jsonSerializer.SerializeToString(parameters),
+                CancellationToken = cancellationToken,
+                LogErrorResponseBody = true,
+                EnableKeepAlive = false
             };
 
-            using (await _httpClient.Post(_httpRequest).ConfigureAwait(false))
-            {
-
-            }
+            await _httpClient.Post(_httpRequest).ConfigureAwait(false);
         }
 
         private bool IsValid(TeleGramOptions options)

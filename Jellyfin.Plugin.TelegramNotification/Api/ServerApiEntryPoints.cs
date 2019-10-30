@@ -1,31 +1,41 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Jellyfin.Plugin.TelegramNotification.Configuration;
 using System.Threading.Tasks;
 using MediaBrowser.Common.Net;
-using Microsoft.Extensions.Logging;
 using MediaBrowser.Model.Services;
-using Jellyfin.Plugin.TelegramNotification.Configuration;
+using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Notifications;
+using Microsoft.Extensions.Logging;
+using MediaBrowser.Model.Serialization;
 
 namespace Jellyfin.Plugin.TelegramNotification.Api
 {
     [Route("/Notification/Telegram/Test/{UserID}", "POST", Summary = "Tests Telegram")]
     public class TestNotification : IReturnVoid
     {
-        [ApiMember(Name = "UserID", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "GET")]
+        [ApiMember(Name = "UserID", Description = "User Id", IsRequired = true, DataType = "string", ParameterType = "path", Verb = "POST")]
         public string UserID { get; set; }
     }
 
-    class ServerApiEndpoints : IService
+    public class ServerApiEndpoints : IService
     {
+        private readonly IUserManager _userManager;
         private readonly IHttpClient _httpClient;
         private readonly ILogger _logger;
+        private readonly IJsonSerializer _jsonSerializer;
 
-        public ServerApiEndpoints(ILogger logger, IHttpClient httpClient)
+        public ServerApiEndpoints(
+            IUserManager userManager,
+            ILogger logger,
+            IHttpClient httpClient,
+            IJsonSerializer jsonSerializer)
         {
+            _userManager = userManager;
             _logger = logger;
             _httpClient = httpClient;
+            _jsonSerializer = jsonSerializer;
         }
         private TeleGramOptions GetOptions(String userID)
         {
@@ -33,32 +43,16 @@ namespace Jellyfin.Plugin.TelegramNotification.Api
                 .FirstOrDefault(i => string.Equals(i.JellyfinUserId, userID, StringComparison.OrdinalIgnoreCase));
         }
 
-        public void Post(TestNotification request)
+        public Task Post(TestNotification request)
         {
-            var task = PostAsync(request);
-            Task.WaitAll(task);
-        }
-
-        public async Task PostAsync(TestNotification request)
-        {
-            var options = GetOptions(request.UserID);
-            string message = Uri.EscapeDataString("This is a Test");
-
-            _logger.LogDebug("Telegram <TEST> to {0} - {1}", options.BotToken, options.ChatID);
-
-            var httpRequestOptions = new HttpRequestOptions
+            return new Notifier(_logger, _httpClient, _jsonSerializer).SendNotification(new UserNotification
             {
-                Url = "https://api.telegram.org/bot" + options.BotToken + "/sendmessage?chat_id=" + options.ChatID + "&text=" + message,
-                CancellationToken = CancellationToken.None
-            };
-
-
-            using (await _httpClient.Post(httpRequestOptions).ConfigureAwait(false))
-            {
-
-            }
-
-
+                Date = DateTime.UtcNow,
+                Description = "This is a test notification from Jellyfin Server",
+                Level = MediaBrowser.Model.Notifications.NotificationLevel.Normal,
+                Name = "Jellyfin: Test Notification",
+                User = _userManager.GetUserById(request.UserID)
+            }, CancellationToken.None);
         }
     }
 }
